@@ -16,7 +16,7 @@ import Prelude
 import Control.Monad.Eff
 import Control.Monad.Eff.Console (log, print, CONSOLE())
 import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error())
+import Control.Monad.Eff.Exception (Error(), error)
 import Control.Monad.Aff
 import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
 import Control.Monad.Reader.Class (ask)
@@ -62,10 +62,10 @@ runNick :: Nick -> String
 runNick (Nick s) = s
 
 connect :: forall e.
-  Host -> Nick -> Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
-connect (Host host) (Nick nick) chan setup = do
+  Host -> Nick -> Array Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
+connect (Host host) (Nick nick) chans setup = do
   client <- liftEff $ do
-    c <- BareBones.createClient host nick [runChannel chan]
+    c <- BareBones.createClient host nick $ map runChannel chans
     -- Add an error handler, because otherwise errors will crash the whole
     -- program
     BareBones.addListener c "error"
@@ -73,16 +73,18 @@ connect (Host host) (Nick nick) chan setup = do
     return c
 
   waitForEvent client "registered"
-  waitForEvent client "join"
+  makeAff \ err success ->
+    BareBones.addListener client "join"
+      { fromArgumentsJS: unsafeFirstArgument, action: \ n -> if n == nick then success unit else err $ error n }
 
   -- Set it up
   runReaderT setup client
 
   where
-  waitForEvent client eventType =
-    makeAff \_ success ->
-      BareBones.addListener client eventType
-        { fromArgumentsJS: const unit, action: success }
+    waitForEvent client eventType =
+      makeAff \_ success ->
+        BareBones.addListener client eventType
+          { fromArgumentsJS: const unit, action: success }
 
 sayChannel :: forall e.
   Channel -> MessageText -> Setup e Unit
@@ -121,8 +123,11 @@ onChannelMessage chan cb =
 foreign import channelMessageFromArgumentsJS ::
   BareBones.ArgumentsJS -> ChannelMessageEvent
 
+unsafeNthArgument :: forall a. Int -> BareBones.ArgumentsJS -> a
+unsafeNthArgument n = flip AU.unsafeIndex n <<< unsafeCoerce
+
 unsafeFirstArgument :: forall a. BareBones.ArgumentsJS -> a
-unsafeFirstArgument = flip AU.unsafeIndex 0 <<< unsafeCoerce
+unsafeFirstArgument = unsafeNthArgument 1
 
 printInspect :: forall e a. a -> Eff (console :: CONSOLE | e) Unit
 printInspect = log <<< inspect
