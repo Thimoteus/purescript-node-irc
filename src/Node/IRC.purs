@@ -62,10 +62,10 @@ runNick :: Nick -> String
 runNick (Nick s) = s
 
 connect :: forall e.
-  Host -> Nick -> Array Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
-connect (Host host) (Nick nick) chans setup = do
+  Host -> Nick -> Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
+connect (Host host) (Nick nick) chan setup = do
   client <- liftEff $ do
-    c <- BareBones.createClient host nick $ map runChannel chans
+    c <- BareBones.createClient host nick [runChannel chan]
     -- Add an error handler, because otherwise errors will crash the whole
     -- program
     BareBones.addListener c "error"
