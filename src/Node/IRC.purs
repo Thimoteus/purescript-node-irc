@@ -10,6 +10,8 @@ module Node.IRC
   , sayNick
   , ChannelMessageEvent()
   , onChannelMessage
+  , PrivateMessageEvent()
+  , onPrivateMessage
   ) where
 
 import Prelude
