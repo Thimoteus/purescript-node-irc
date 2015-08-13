@@ -58,6 +58,11 @@ newtype Nick
   = Nick String
 ```
 
+##### Instances
+``` purescript
+instance eqNick :: Eq Nick
+```
+
 #### `runNick`
 
 ``` purescript

@@ -58,6 +58,9 @@ runMessageText (MessageText s) = s
 
 newtype Nick = Nick String
 
+instance eqNick :: Eq Nick where
+  eq (Nick n) (Nick m) = n == m
+
 runNick :: Nick -> String
 runNick (Nick s) = s
 
@@ -100,6 +103,19 @@ type ChannelMessageEvent =
   { nick :: Nick
   , text :: MessageText
   }
+
+type PrivateMessageEvent = { nick :: Nick
+                           , to :: Nick
+                           , text :: MessageText }
+
+onPrivateMessage :: forall e. Nick -> (PrivateMessageEvent -> Setup e Unit) -> Setup e Unit
+onPrivateMessage nick cb =
+  ReaderT \ client ->
+    liftEff $ BareBones.addListener client "message"
+      { fromArgumentsJS: privateMessageFromArgumentsJS
+      , action: \ event -> if event.to == nick then runSetup (cb event) client else return unit }
+
+foreign import privateMessageFromArgumentsJS :: BareBones.ArgumentsJS -> PrivateMessageEvent
 
 -- | Add a callback to be run every time a message is sent to a particular
 -- | channel.

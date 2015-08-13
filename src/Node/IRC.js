@@ -9,4 +9,12 @@ exports.channelMessageFromArgumentsJS = function (args) {
   }
 }
 
+exports.privateMessageFromArgumentsJS = function (args) {
+  return {
+    nick: args[0],
+    to: args[1],
+    text: args[2]
+  }
+}
+
 exports.inspect = require('util').inspect
