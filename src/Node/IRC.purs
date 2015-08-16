@@ -78,9 +78,7 @@ connect (Host host) (Nick nick) chan setup = do
     return c
 
   waitForEvent client "registered"
-  makeAff \ err success ->
-    BareBones.addListener client "join"
-      { fromArgumentsJS: unsafeFirstArgument, action: \ n -> if n == nick then success unit else err $ error n }
+  waitForEvent client "join"
 
   -- Set it up
   runReaderT setup client
