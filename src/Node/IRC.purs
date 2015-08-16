@@ -86,10 +86,10 @@ connect (Host host) (Nick nick) chan setup = do
   runReaderT setup client
 
   where
-    waitForEvent client eventType =
-      makeAff \_ success ->
-        BareBones.addListener client eventType
-          { fromArgumentsJS: const unit, action: success }
+  waitForEvent client eventType =
+    makeAff \_ success ->
+      BareBones.once client eventType
+        { fromArgumentsJS: const unit, action: success }
 
 sayChannel :: forall e.
   Channel -> MessageText -> Setup e Unit
