@@ -40,12 +40,7 @@ import Unsafe.Coerce (unsafeCoerce)
 import qualified Node.IRC.BareBones as BareBones
 
 -------------
--- Re-exports
-
-type IRC = BareBones.IRC
-
------------
--- The rest
+-- Types
 
 type Setup e a = ReaderT BareBones.Client (Aff (irc :: IRC, console :: CONSOLE | e)) a
 
@@ -79,48 +74,6 @@ instance showNick :: Show Nick where
 
 runNick :: Nick -> String
 runNick (Nick s) = s
-
-connect :: forall e.
-  Host -> Nick -> Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
-connect (Host host) (Nick nick) chan setup = do
-  client <- liftEff $ do
-    c <- BareBones.createClient host nick [runChannel chan]
-    -- Add an error handler, because otherwise errors will crash the whole
-    -- program
-    BareBones.addListener c "error"
-      { fromArgumentsJS: unsafeFirstArgument, action: printInspect }
-    return c
-
-  waitForEvent client "registered"
-  waitForEvent client "join"
-
-  -- Set it up
-  runReaderT setup client
-
-  where
-  waitForEvent client eventType =
-    makeAff \_ success ->
-      BareBones.once client eventType
-        { fromArgumentsJS: const unit, action: success }
-
-sayChannel :: forall e.
-  Channel -> MessageText -> Setup e Unit
-sayChannel (Channel chan) (MessageText text) =
-  ReaderT \client -> liftEff $ BareBones.say client chan text
-
-sayNick :: forall e.
-  BareBones.Client -> Nick -> MessageText -> Eff (irc :: IRC | e) Unit
-sayNick client (Nick nick) (MessageText text) =
-  BareBones.say client nick text
-
-whoIs :: forall e. Nick -> (F WhoIs -> Setup e Unit) -> Setup e Unit
-whoIs (Nick nick) cb = ReaderT \ client ->
-                    liftEff $ BareBones.whois client nick
-                      { fromArgumentsJS: read <<< foreignFromArgumentsJS <<< unsafeNthArgument 0
-                      , action: \ info -> runSetup (cb info) client }
-
-foreignFromArgumentsJS :: BareBones.ArgumentsJS -> Foreign
-foreignFromArgumentsJS = toForeign
 
 newtype WhoIs = WhoIs { nick :: Nick
                       , user :: Maybe String
@@ -176,6 +129,57 @@ type PrivateMessageEvent = { nick :: Nick
 
 type JoinEvent = ChannelMessageEvent 
 type PartEvent = ChannelMessageEvent
+
+-------------
+-- Re-exports
+
+type IRC = BareBones.IRC
+
+-----------
+-- The rest
+
+connect :: forall e.
+  Host -> Nick -> Channel -> Setup e Unit -> Aff (irc :: IRC, console :: CONSOLE | e) Unit
+connect (Host host) (Nick nick) chan setup = do
+  client <- liftEff $ do
+    c <- BareBones.createClient host nick [runChannel chan]
+    -- Add an error handler, because otherwise errors will crash the whole
+    -- program
+    BareBones.addListener c "error"
+      { fromArgumentsJS: unsafeFirstArgument, action: printInspect }
+    return c
+
+  waitForEvent client "registered"
+  waitForEvent client "join"
+
+  -- Set it up
+  runReaderT setup client
+
+  where
+  waitForEvent client eventType =
+    makeAff \_ success ->
+      BareBones.once client eventType
+        { fromArgumentsJS: const unit, action: success }
+
+sayChannel :: forall e.
+  Channel -> MessageText -> Setup e Unit
+sayChannel (Channel chan) (MessageText text) =
+  ReaderT \client -> liftEff $ BareBones.say client chan text
+
+sayNick :: forall e.
+  BareBones.Client -> Nick -> MessageText -> Eff (irc :: IRC | e) Unit
+sayNick client (Nick nick) (MessageText text) =
+  BareBones.say client nick text
+
+whoIs :: forall e. Nick -> (F WhoIs -> Setup e Unit) -> Setup e Unit
+whoIs (Nick nick) cb = ReaderT \ client ->
+                    liftEff $ BareBones.whois client nick
+                      { fromArgumentsJS: read <<< foreignFromArgumentsJS <<< unsafeNthArgument 0
+                      , action: \ info -> runSetup (cb info) client }
+
+foreignFromArgumentsJS :: BareBones.ArgumentsJS -> Foreign
+foreignFromArgumentsJS = toForeign
+
 
 onPrivateMessage :: forall e. (PrivateMessageEvent -> Setup e Unit) -> Setup e Unit
 onPrivateMessage cb =
