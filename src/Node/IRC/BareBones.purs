@@ -7,6 +7,7 @@ module Node.IRC.BareBones
   , addListener
   , once
   , say
+  , whois
   ) where
 
 import Prelude
@@ -70,3 +71,6 @@ once =
 -- | ```
 foreign import say ::
   forall e. Client -> String -> String -> Eff (irc :: IRC | e) Unit
+
+whois :: forall e args. Client -> String -> IRCCallback e args -> Eff (irc :: IRC | e) Unit
+whois = clientMethod "whois"

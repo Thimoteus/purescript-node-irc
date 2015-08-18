@@ -8,13 +8,24 @@ module Node.IRC
   , connect
   , sayChannel
   , sayNick
+  , WhoIs (..)
+  , whoIs
+  , runWhoIs
   , ChannelMessageEvent()
   , onChannelMessage
   , PrivateMessageEvent()
   , onPrivateMessage
+  , JoinEvent ()
+  , onJoinEvent
+  , PartEvent ()
+  , onPartEvent
   ) where
 
 import Prelude
+import Data.Foreign
+import Data.Foreign.Class
+import Data.Foreign.Undefined
+import Data.Maybe
 import Control.Monad.Eff
 import Control.Monad.Eff.Console (log, print, CONSOLE())
 import Control.Monad.Eff.Class (liftEff)
@@ -63,6 +74,9 @@ newtype Nick = Nick String
 instance eqNick :: Eq Nick where
   eq (Nick n) (Nick m) = n == m
 
+instance showNick :: Show Nick where
+  show (Nick n) = "Nick " <> n
+
 runNick :: Nick -> String
 runNick (Nick s) = s
 
@@ -99,6 +113,58 @@ sayNick :: forall e.
 sayNick client (Nick nick) (MessageText text) =
   BareBones.say client nick text
 
+whoIs :: forall e. Nick -> (F WhoIs -> Setup e Unit) -> Setup e Unit
+whoIs (Nick nick) cb = ReaderT \ client ->
+                    liftEff $ BareBones.whois client nick
+                      { fromArgumentsJS: read <<< foreignFromArgumentsJS <<< unsafeNthArgument 0
+                      , action: \ info -> runSetup (cb info) client }
+
+foreignFromArgumentsJS :: BareBones.ArgumentsJS -> Foreign
+foreignFromArgumentsJS = toForeign
+
+newtype WhoIs = WhoIs { nick :: Nick
+                      , user :: Maybe String
+                      , host :: Maybe String
+                      , realname :: Maybe String
+                      , channels :: Maybe (Array Channel)
+                      , server :: Maybe String
+                      , serverinfo :: Maybe String
+                      , account :: Maybe String
+                      , accountinfo :: Maybe String }
+
+instance showWhoIs :: Show WhoIs where
+  show (WhoIs w) = "WhoIs " <> show w.nick
+
+runWhoIs :: WhoIs -> _
+runWhoIs (WhoIs w) = w
+
+instance nickIsForeign :: IsForeign Nick where
+  read value = Nick <$> readString value
+
+instance channelIsForeign :: IsForeign Channel where
+  read value = Channel <$> readString value
+
+instance whoIsForeign :: IsForeign WhoIs where
+  read value = do
+    nick <- readProp "nick" value
+    user <- readUndefined (readProp "user") value
+    host <- readUndefined (readProp "host") value
+    realname <- readUndefined (readProp "realname") value
+    channels <- readUndefined (readProp "channels") value
+    server <- readUndefined (readProp "server") value
+    serverinfo <- readUndefined (readProp "serverinfo") value
+    account <- readUndefined (readProp "account") value
+    accountinfo <- readUndefined (readProp "accountinfo") value
+    return $ WhoIs { nick: nick
+                   , user: runUndefined user
+                   , host: runUndefined host
+                   , realname: runUndefined realname
+                   , channels: runUndefined channels
+                   , server: runUndefined server
+                   , serverinfo: runUndefined serverinfo
+                   , account: runUndefined account
+                   , accountinfo: runUndefined accountinfo }
+
 type ChannelMessageEvent =
   { nick :: Nick
   , text :: MessageText
@@ -108,14 +174,40 @@ type PrivateMessageEvent = { nick :: Nick
                            , to :: Nick
                            , text :: MessageText }
 
-onPrivateMessage :: forall e. Nick -> (PrivateMessageEvent -> Setup e Unit) -> Setup e Unit
-onPrivateMessage nick cb =
-  ReaderT \ client ->
-    liftEff $ BareBones.addListener client "message"
-      { fromArgumentsJS: privateMessageFromArgumentsJS
-      , action: \ event -> if event.to == nick then runSetup (cb event) client else return unit }
+type JoinEvent = ChannelMessageEvent 
+type PartEvent = ChannelMessageEvent
 
-foreign import privateMessageFromArgumentsJS :: BareBones.ArgumentsJS -> PrivateMessageEvent
+onPrivateMessage :: forall e. (PrivateMessageEvent -> Setup e Unit) -> Setup e Unit
+onPrivateMessage cb =
+  ReaderT \ client ->
+    liftEff $ BareBones.addListener client "pm"
+      { fromArgumentsJS: privateMessageFromArgumentsJS
+      , action: \ event -> runSetup (cb event) client }
+
+privateMessageFromArgumentsJS :: BareBones.ArgumentsJS -> PrivateMessageEvent
+privateMessageFromArgumentsJS args = { nick: unsafeNthArgument 0 args
+                                     , to: unsafeNthArgument 1 args
+                                     , text: unsafeNthArgument 2 args }
+
+onJoinEvent :: forall e. Channel -> (JoinEvent -> Setup e Unit) -> Setup e Unit
+onJoinEvent chan cb =
+  ReaderT \ client ->
+    liftEff $ BareBones.addListener client ("join" <> runChannel chan)
+      { fromArgumentsJS: joinFromArgumentsJS
+      , action: \ event -> runSetup (cb event) client }
+
+joinFromArgumentsJS :: BareBones.ArgumentsJS -> JoinEvent
+joinFromArgumentsJS = channelMessageFromArgumentsJS
+
+onPartEvent :: forall e. Channel -> (PartEvent -> Setup e Unit) -> Setup e Unit
+onPartEvent chan cb =
+  ReaderT \ client ->
+    liftEff $ BareBones.addListener client ("part" <> runChannel chan)
+      { fromArgumentsJS: partFromArgumentsJS
+      , action: \ event -> runSetup (cb event) client }
+
+partFromArgumentsJS :: BareBones.ArgumentsJS -> PartEvent
+partFromArgumentsJS = channelMessageFromArgumentsJS
 
 -- | Add a callback to be run every time a message is sent to a particular
 -- | channel.
@@ -136,8 +228,9 @@ onChannelMessage chan cb =
     , action: \event -> runSetup (cb event) client
     }
 
-foreign import channelMessageFromArgumentsJS ::
-  BareBones.ArgumentsJS -> ChannelMessageEvent
+channelMessageFromArgumentsJS :: BareBones.ArgumentsJS -> ChannelMessageEvent
+channelMessageFromArgumentsJS args = { nick: unsafeNthArgument 0 args
+                                     , text: unsafeNthArgument 1 args }
 
 unsafeNthArgument :: forall a. Int -> BareBones.ArgumentsJS -> a
 unsafeNthArgument n = flip AU.unsafeIndex n <<< unsafeCoerce
