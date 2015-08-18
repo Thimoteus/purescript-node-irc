@@ -59,6 +59,9 @@ newtype Channel = Channel String
 runChannel :: Channel -> String
 runChannel (Channel s) = s
 
+instance showChannel :: Show Channel where
+  show (Channel s) = "Channel " ++ s
+
 newtype MessageText = MessageText String
 
 runMessageText :: MessageText -> String
@@ -86,7 +89,17 @@ newtype WhoIs = WhoIs { nick :: Nick
                       , accountinfo :: Maybe String }
 
 instance showWhoIs :: Show WhoIs where
-  show (WhoIs w) = "WhoIs " <> show w.nick
+  show (WhoIs w) = "WhoIs {"
+                <> show w.nick <> ", "
+                <> show w.user <> ", "
+                <> show w.host <> ", "
+                <> show w.realname <> ", "
+                <> show w.channels <> ", "
+                <> show w.server <> ", "
+                <> show w.serverinfo <> ", "
+                <> show w.account <> ", "
+                <> show w.accountinfo <> ", "
+                <> " }"
 
 runWhoIs :: WhoIs -> _
 runWhoIs (WhoIs w) = w
